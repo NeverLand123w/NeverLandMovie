@@ -1,0 +1,113 @@
+---
+import Navbar from "../../components/Navbar.astro";
+import "../../styles/info.css";
+import Layout from "../../layouts/Layout.astro";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+const movieId = Array.isArray(id) ? id.join("/") : id;
+
+const res = await fetch(
+  `https://neverland-api.vercel.app/movies/flixhq/info?id=${movieId}`,
+);
+if (!res.ok) return Astro.redirect("/404");
+const movie = await res.json();
+
+// Fallback for missing background
+const backdropImage = movie.cover || movie.image;
+---
+
+<Layout>
+  <Navbar />
+
+  <main class="movie-page">
+    {/* Layer 1: Cinematic Backdrop with Grain & Masking */}
+    <div class="hero-backdrop">
+      <div class="backdrop-wrapper">
+        <img src={backdropImage} alt="" class="backdrop-img" />
+        <div class="backdrop-gradient"></div>
+      </div>
+    </div>
+
+    {/* Layer 2: Content */}
+    <div class="container hero-content">
+      {/* Column 1: Poster */}
+      <div class="poster-col animate-in" style="--delay: 0.1s">
+        <div class="poster-card">
+          <img src={movie.image} alt={movie.title} class="poster-img" />
+          {
+            movie.rating && (
+              <div class="rating-tag">
+                <span>Rating</span> {movie.rating}
+              </div>
+            )
+          }
+        </div>
+      </div>
+
+      {/* Column 2: Details */}
+      <div class="info-col">
+        {/* Breadcrumb */}
+        <nav class="breadcrumb animate-in" style="--delay: 0.2s">
+          <a href="/tv">TV Series</a>
+          <span class="sep">/</span>
+          <span class="current">{movie.type || "Feature"}</span>
+        </nav>
+
+        {/* Title */}
+        <h1 class="movie-title animate-in" style="--delay: 0.3s">
+          {movie.title}
+        </h1>
+
+        {/* Meta Data */}
+        <div class="meta-row animate-in" style="--delay: 0.4s">
+          <span class="year">{movie.releaseDate}</span>
+          <span class="dot">|</span>
+          <span class="duration">{movie.duration}</span>
+          {
+            movie.production && (
+              <>
+                <span class="dot">|</span>
+                <span class="production">{movie.production}</span>
+              </>
+            )
+          }
+        </div>
+
+        {/* Genres */}
+        <div class="genres-row animate-in" style="--delay: 0.5s">
+          {movie.genres?.map((genre) => <span class="genre-tag">{genre}</span>)}
+        </div>
+
+        {/* Description */}
+        <p class="synopsis animate-in" style="--delay: 0.6s">
+          {movie.description}
+        </p>
+
+        {/* Action Buttons */}
+        <div class="action-row animate-in" style="--delay: 0.7s">
+          {
+            movie.episodes?.[0]?.id ? (
+              <a
+                href={`/watch/${movie.episodes[0].id}`}
+                class="btn btn-primary"
+              >
+                <div class="icon-circle">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5.14v14l11-7-11-7z" />
+                  </svg>
+                </div>
+                <span>Watch Now</span>
+              </a>
+            ) : (
+              <button class="btn btn-disabled" disabled>
+                Unavailable
+              </button>
+            )
+          }
+        </div>
+      </div>
+    </div>
+  </main>
+</Layout>

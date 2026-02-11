@@ -1,11 +1,188 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import Layout from "../layouts/Layout.astro";
+import Navbar from "../components/Navbar.astro";
+import "../styles/home.css";
+import { Image } from "astro:assets";
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+let trending = [];
+try {
+  const res = await fetch(
+    "https://neverland-api.vercel.app/movies/flixhq/trending",
+  );
+
+  if (res.ok) {
+    const data = await res.json();
+    // Filter for movies only, then slice to a reasonable number (e.g., 18)
+    trending = (data.results || [])
+      .filter((item) => item.type?.toLowerCase() === "movie")
+      .slice(0, 18);
+  }
+} catch (error) {
+  console.error("Failed to fetch trending movies:", error);
+}
+
+let trendingtv = [];
+try {
+  const res = await fetch(
+    "https://neverland-api.vercel.app/movies/flixhq/trending",
+  );
+
+  if (res.ok) {
+    const data = await res.json();
+    // Filter for movies only, then slice to a reasonable number (e.g., 18)
+    trendingtv = (data.results || [])
+      .filter((item) => item.type?.toLowerCase() === "tv series")
+      .slice(0, 18);
+  }
+} catch (error) {
+  console.error("Failed to fetch trending TV Series:", error);
+}
+
+let recentmovie = [];
+try {
+  const res = await fetch(
+    "https://neverland-api.vercel.app/movies/flixhq/recent-movies",
+  );
+
+  if (res.ok) {
+    const data = await res.json();
+    recentmovie = data || [];
+  }
+} catch (error) {
+  console.error("Failed to fetch Recent Movies:", error);
+}
+
+let recenttv = [];
+try {
+  const res = await fetch(
+    "https://neverland-api.vercel.app/movies/flixhq/recent-shows",
+  );
+
+  if (res.ok) {
+    const data = await res.json();
+    recenttv = data || [];
+  }
+} catch (error) {
+  console.error("Failed to fetch Recent Movies:", error);
+}
 ---
 
 <Layout>
-	<Welcome />
+  <Navbar />
+
+  <div class="trending" style="max-width: 1400px;">
+    <h2>Trending Movies</h2>
+
+    {
+      trending.length > 0 ? (
+        <div class="grid">
+          {trending.map((movie) => (
+            <a href={`/movie/${movie.id}`} class="card">
+              <Image
+                src={movie.image}
+                alt={movie.title}
+                width="100"
+                height="100"
+                loading="lazy"
+                decoding="async"
+              />
+              <h3>{movie.title}</h3>
+              <p class="meta">
+                {movie.releaseDate} • {movie.duration}
+              </p>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p>No movies found at the moment. Please try again later.</p>
+      )
+    }
+  </div>
+
+  <div class="trending" style="max-width: 1400px;">
+    <h2>Trending TV Series</h2>
+
+    {
+      trendingtv.length > 0 ? (
+        <div class="grid">
+          {trendingtv.map((movie) => (
+            <a href={`/tv/${movie.id}`} class="card">
+              <Image
+                src={movie.image}
+                alt={movie.title}
+                width="100"
+                height="100"
+                loading="lazy"
+                decoding="async"
+              />
+              <h3>{movie.title}</h3>
+              <p class="meta">
+                {movie.season} • {movie.latestEpisode}
+              </p>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p>No TV Series found at the moment. Please try again later.</p>
+      )
+    }
+  </div>
+
+  <div class="trending" style="max-width: 1400px;">
+    <h2>Recent Movies</h2>
+
+    {
+      recentmovie.length > 0 ? (
+        <div class="grid">
+          {recentmovie.map((movie) => (
+            <a href={`/movie/${movie.id}`} class="card">
+              <Image
+                src={movie.image}
+                alt={movie.title}
+                width="100"
+                height="100"
+                loading="lazy"
+                decoding="async"
+              />
+              <h3>{movie.title}</h3>
+              <p class="meta">
+                {movie.releaseDate} • {movie.duration}
+              </p>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p>No movies found at the moment. Please try again later.</p>
+      )
+    }
+  </div>
+
+  <div class="trending" style="max-width: 1400px;">
+    <h2>Recent TV Shows</h2>
+
+    {
+      recenttv.length > 0 ? (
+        <div class="grid">
+          {recenttv.map((movie) => (
+            <a href={`/tv/${movie.id}`} class="card">
+              <Image
+                src={movie.image}
+                alt={movie.title}
+                width="100"
+                height="100"
+                loading="lazy"
+                decoding="async"
+              />
+              <h3>{movie.title}</h3>
+              <p class="meta">
+                {movie.season} • {movie.latestEpisode}
+              </p>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p>No movies found at the moment. Please try again later.</p>
+      )
+    }
+  </div>
 </Layout>

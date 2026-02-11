@@ -1,0 +1,847 @@
+---
+import "../../styles/player.css";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect("/404");
+
+const segments = id.split("/");
+const episodeId = segments.pop();
+const mediaId = segments.join("/");
+
+const [infoRes, watchRes] = await Promise.all([
+  fetch(`https://neverland-api.vercel.app/movies/flixhq/info?id=${mediaId}`),
+  fetch(
+    `https://neverland-api.vercel.app/movies/flixhq/watch?episodeId=${episodeId}&mediaId=${mediaId}&server=vidcloud`,
+  ),
+]);
+
+const info = await infoRes.json();
+const watchData = await watchRes.json();
+
+const sourceUrl =
+  watchData.sources?.find((s) => s.quality === "auto")?.url ||
+  watchData.sources?.[0]?.url;
+
+const apiReferer = watchData.headers?.Referer || "";
+
+const initialProxyUrl = sourceUrl
+  ? `/api/proxy?url=${encodeURIComponent(sourceUrl)}&referer=${encodeURIComponent(apiReferer)}`
+  : null;
+
+const initialTracks =
+  watchData.subtitles?.map((sub) => ({
+    lang: sub.lang,
+    url: sub.url,
+  })) || [];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Watching {info.title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="player-container" id="player-container">
+      <!-- Poster Background -->
+      <div
+        class="poster-bg"
+        id="poster-bg"
+        style={`background-image: url('${info.cover || info.image}');`}
+      >
+      </div>
+
+      <!-- Video -->
+      <div class="video-wrapper">
+        <video id="video" crossorigin="anonymous"></video>
+      </div>
+
+      <!-- UI Overlay -->
+      <div class="player-ui" id="player-ui">
+        <div class="top-bar">
+          <button class="back-btn" id="back-btn">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M19 12H5M12 19l-7-7 7-7"></path>
+            </svg>
+          </button>
+          <div class="title-info">
+            <h1>{info.title}</h1>
+            <p>Episode {episodeId}</p>
+          </div>
+        </div>
+
+        <!-- Movie Info -->
+        <div class="movie-info">
+          <h2>{info.title}</h2>
+          <div class="movie-meta">
+            {info.releaseDate && <span>{info.releaseDate}</span>}
+            {info.releaseDate && <span class="dot" />}
+            {info.type && <span class="badge">{info.type.toUpperCase()}</span>}
+            {info.rating && <span class="dot" />}
+            {info.rating && <span>⭐ {info.rating}</span>}
+          </div>
+          <p class="movie-description">{info.description}</p>
+          {
+            info.genres && info.genres.length > 0 && (
+              <div class="movie-genres">
+                {info.genres.slice(0, 5).map((genre) => (
+                  <span class="genre-tag">{genre}</span>
+                ))}
+              </div>
+            )
+          }
+        </div>
+
+        <div class="center-controls" id="center-controls">
+          <div class="center-btn" id="rewind-indicator">-10s</div>
+          <div class="center-btn" id="forward-indicator">+10s</div>
+        </div>
+
+        <div class="loading" id="loading"></div>
+
+        <div class="server-switcher">
+          <span class="server-label">SOURCE</span>
+          <div class="server-buttons">
+            <button class="server-btn active" data-server="vidcloud">
+              VidCloud
+            </button>
+            <button class="server-btn" data-server="upcloud">UpCloud</button>
+          </div>
+        </div>
+
+        <div class="bottom-controls">
+          <div class="progress-container" id="progress-container">
+            <div class="progress-buffer" id="progress-buffer"></div>
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+
+          <div class="controls-row">
+            <button class="control-btn play-btn" id="play-btn">
+              <svg
+                id="play-icon"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                style="display: block;"
+              >
+                <path d="M8 5v14l11-7z"></path>
+              </svg>
+              <svg
+                id="pause-icon"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                style="display: none;"
+              >
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"></path>
+              </svg>
+            </button>
+
+            <button class="control-btn" id="rewind-btn" title="Rewind 10s">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"
+                ></path>
+                <path d="M3 3v5h5"></path>
+                <text
+                  x="12"
+                  y="16"
+                  text-anchor="middle"
+                  font-size="8"
+                  fill="currentColor">10</text
+                >
+              </svg>
+            </button>
+
+            <button class="control-btn" id="forward-btn" title="Forward 10s">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"
+                ></path>
+                <path d="M21 3v5h-5"></path>
+                <text
+                  x="12"
+                  y="16"
+                  text-anchor="middle"
+                  font-size="8"
+                  fill="currentColor">10</text
+                >
+              </svg>
+            </button>
+
+            <div class="volume-control">
+              <button class="control-btn" id="mute-btn">
+                <svg id="volume-icon" viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"
+                  ></path>
+                </svg>
+                <svg
+                  id="mute-icon"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  style="display: none;"
+                >
+                  <path
+                    d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
+                  ></path>
+                </svg>
+              </button>
+              <input
+                type="range"
+                class="volume-slider"
+                id="volume-slider"
+                min="0"
+                max="100"
+                value="100"
+              />
+            </div>
+
+            <span class="time-display" id="time-display">0:00 / 0:00</span>
+
+            <div class="spacer"></div>
+
+            <div style="position: relative;">
+              <button class="control-btn" id="captions-btn" title="Subtitles">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"
+                  ></path>
+                </svg>
+              </button>
+              <div class="captions-menu" id="captions-menu"></div>
+            </div>
+
+            <div style="position: relative;">
+              <button class="control-btn" id="settings-btn" title="Settings">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+                  ></path>
+                </svg>
+              </button>
+              <div class="settings-menu" id="settings-menu"></div>
+            </div>
+
+            <button class="control-btn" id="fullscreen-btn" title="Fullscreen">
+              <svg id="fullscreen-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"
+                ></path>
+              </svg>
+              <svg
+                id="exit-fullscreen-icon"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                style="display: none;"
+              >
+                <path
+                  d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"
+                ></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script
+      define:vars={{
+        episodeId,
+        mediaId,
+        initialProxyUrl,
+        initialTracks,
+        posterImage: info.cover || info.image,
+      }}
+    >
+      // Load HLS.js first
+      const hlsScript = document.createElement("script");
+      hlsScript.src = "https://cdn.jsdelivr.net/npm/hls.js@latest";
+      document.head.appendChild(hlsScript);
+    </script>
+
+    <script
+      define:vars={{
+        episodeId,
+        mediaId,
+        initialProxyUrl,
+        initialTracks,
+        posterImage: info.cover || info.image,
+      }}
+    >
+      class VideoPlayer {
+        constructor() {
+          this.video = document.getElementById("video");
+          this.playerUI = document.getElementById("player-ui");
+          this.container = document.getElementById("player-container");
+          this.posterBg = document.getElementById("poster-bg");
+          this.hls = new Hls({
+            enableWorker: true,
+
+            // STARTUP SPEED: Only download ONE tiny 5-second chunk to start
+            initialLiveManifestSize: 1,
+
+            // DOWNLOAD SPEED: Allow the browser to open more simultaneous streams
+            maxBufferLength: 10, // Keep a small buffer so the IP isn't flagged
+            maxMaxBufferLength: 20,
+
+            // THE MAGIC SPEED FIX:
+            // Cap the starting quality. Don't let it try 1080p at the start.
+            autoStartLoad: true,
+            startLevel: 0, // 0 is usually the lowest resolution (fastest load)
+
+            // RECOVERY: If a segment fails, try a different proxy worker instantly
+            fragLoadingMaxRetry: 15,
+            fragLoadingRetryDelay: 500,
+          });
+
+          // Auto-Quality Boost: Once it's playing, it will auto-switch to HD.
+          this.hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+            this.hideLoading();
+          });
+          this.currentSubtitles = initialTracks;
+          this.hideTimeout = null;
+          this.isSeeking = false;
+          this.hasStarted = false;
+
+          this.initElements();
+          this.initEventListeners();
+          this.loadVideo(initialProxyUrl, initialTracks);
+          this.showUI();
+          this.showPoster();
+        }
+
+        initElements() {
+          this.playBtn = document.getElementById("play-btn");
+          this.playIcon = document.getElementById("play-icon");
+          this.pauseIcon = document.getElementById("pause-icon");
+          this.progressContainer =
+            document.getElementById("progress-container");
+          this.progressBar = document.getElementById("progress-bar");
+          this.progressBuffer = document.getElementById("progress-buffer");
+          this.timeDisplay = document.getElementById("time-display");
+          this.volumeBtn = document.getElementById("mute-btn");
+          this.volumeIcon = document.getElementById("volume-icon");
+          this.muteIcon = document.getElementById("mute-icon");
+          this.volumeSlider = document.getElementById("volume-slider");
+          this.fullscreenBtn = document.getElementById("fullscreen-btn");
+          this.fullscreenIcon = document.getElementById("fullscreen-icon");
+          this.exitFullscreenIcon = document.getElementById(
+            "exit-fullscreen-icon",
+          );
+          this.settingsBtn = document.getElementById("settings-btn");
+          this.settingsMenu = document.getElementById("settings-menu");
+          this.captionsBtn = document.getElementById("captions-btn");
+          this.captionsMenu = document.getElementById("captions-menu");
+          this.rewindBtn = document.getElementById("rewind-btn");
+          this.forwardBtn = document.getElementById("forward-btn");
+          this.backBtn = document.getElementById("back-btn");
+          this.loading = document.getElementById("loading");
+          this.centerControls = document.getElementById("center-controls");
+          this.rewindIndicator = document.getElementById("rewind-indicator");
+          this.forwardIndicator = document.getElementById("forward-indicator");
+
+          this.buildSettingsMenu();
+          this.buildCaptionsMenu();
+        }
+
+        initEventListeners() {
+          // Force play on first click anywhere if it's stuck
+          document.addEventListener(
+            "click",
+            () => {
+              if (this.video.paused && this.hasStarted) {
+                this.video.play().catch(() => {});
+              }
+            },
+            { once: true },
+          );
+
+          this.video.addEventListener("playing", () => {
+            this.hideLoading();
+            this.hidePoster();
+          });
+
+          this.video.addEventListener("waiting", () => this.showLoading());
+          this.video.addEventListener("stalled", () => this.showLoading());
+
+          // Play/Pause
+          this.playBtn.addEventListener("click", () => this.togglePlay());
+          this.video.addEventListener("click", () => this.togglePlay());
+
+          // Progress
+          this.video.addEventListener("timeupdate", () =>
+            this.updateProgress(),
+          );
+          this.video.addEventListener("progress", () => this.updateBuffer());
+          this.progressContainer.addEventListener("click", (e) => this.seek(e));
+          this.progressContainer.addEventListener("mousedown", () => {
+            this.isSeeking = true;
+          });
+          document.addEventListener("mouseup", () => {
+            this.isSeeking = false;
+          });
+          this.progressContainer.addEventListener("mousemove", (e) => {
+            if (this.isSeeking) this.seek(e);
+          });
+
+          // Volume
+          this.volumeBtn.addEventListener("click", () => this.toggleMute());
+          this.volumeSlider.addEventListener("input", (e) =>
+            this.setVolume(e.target.value / 100),
+          );
+
+          // Skip
+          this.rewindBtn.addEventListener("click", () => this.skip(-10));
+          this.forwardBtn.addEventListener("click", () => this.skip(10));
+
+          // Fullscreen
+          this.fullscreenBtn.addEventListener("click", () =>
+            this.toggleFullscreen(),
+          );
+          document.addEventListener("fullscreenchange", () =>
+            this.updateFullscreenButton(),
+          );
+
+          // Settings & Captions
+          this.settingsBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.toggleMenu(this.settingsMenu);
+            this.captionsMenu.classList.remove("active");
+          });
+          this.captionsBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.toggleMenu(this.captionsMenu);
+            this.settingsMenu.classList.remove("active");
+          });
+          document.addEventListener("click", () => {
+            this.settingsMenu.classList.remove("active");
+            this.captionsMenu.classList.remove("active");
+          });
+
+          // UI visibility
+          this.container.addEventListener("mousemove", () => this.showUI());
+          this.container.addEventListener("mouseleave", () => this.hideUI());
+          this.video.addEventListener("play", () => this.onPlay());
+          this.video.addEventListener("pause", () => this.onPause());
+          this.video.addEventListener("waiting", () => this.showLoading());
+          this.video.addEventListener("canplay", () => this.hideLoading());
+
+          // Keyboard
+          document.addEventListener("keydown", (e) => this.handleKeyboard(e));
+
+          // Back button
+          this.backBtn.addEventListener("click", () => {
+            window.location.href = "/movies";
+          });
+
+          // Server switcher
+          document.querySelectorAll(".server-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const server = btn.dataset.server;
+              this.switchServer(server);
+              document
+                .querySelectorAll(".server-btn")
+                .forEach((b) => b.classList.remove("active"));
+              btn.classList.add("active");
+            });
+          });
+
+          // Prevent context menu on video
+          this.video.addEventListener("contextmenu", (e) => e.preventDefault());
+        }
+
+        async loadVideo(url, subtitles) {
+          this.showLoading();
+
+          if (this.hls) {
+            this.hls.destroy();
+          }
+
+          // Clear existing tracks
+          Array.from(this.video.textTracks).forEach((track) => {
+            track.mode = "disabled";
+          });
+          this.video
+            .querySelectorAll("track")
+            .forEach((track) => track.remove());
+
+          // Add new subtitles
+          subtitles.forEach((sub) => {
+            const track = document.createElement("track");
+            track.kind = "captions";
+            track.label = sub.lang;
+            track.srclang = sub.lang.slice(0, 2).toLowerCase();
+            track.src = sub.url;
+            if (sub.lang.toLowerCase().includes("english")) {
+              track.default = true;
+            }
+            this.video.appendChild(track);
+          });
+
+          // Wait for HLS.js to load
+          const waitForHls = () => {
+            return new Promise((resolve) => {
+              if (typeof Hls !== "undefined") {
+                resolve();
+              } else {
+                setTimeout(() => waitForHls().then(resolve), 100);
+              }
+            });
+          };
+
+          await waitForHls();
+
+          if (Hls.isSupported()) {
+            this.hls = new Hls({
+              // Let the player manage its own speed - don't add too many buffers
+              enableWorker: true,
+              lowLatencyMode: false,
+            });
+
+            this.hls.loadSource(url);
+            this.hls.attachMedia(this.video);
+
+            this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              console.log("Ready to play");
+              this.video.play().catch(() => {
+                console.log("Waiting for user interaction to play...");
+              });
+            });
+
+            this.hls.on(Hls.Events.ERROR, (event, data) => {
+              if (data.fatal) {
+                console.warn("HLS Error:", data.details);
+                this.hls.startLoad(); // Automatically try to keep going
+              }
+            });
+          } else if (this.video.canPlayType("application/vnd.apple.mpegurl")) {
+            this.video.src = url;
+            this.video.addEventListener("loadedmetadata", () => {
+              setTimeout(() => {
+                const tracks = Array.from(this.video.textTracks);
+                tracks.forEach((track) => {
+                  if (track.label.toLowerCase().includes("english")) {
+                    track.mode = "showing";
+                  }
+                });
+                this.buildCaptionsMenu();
+              }, 500);
+            });
+          }
+
+          this.hideLoading();
+        }
+
+        async switchServer(server) {
+          this.showLoading();
+          try {
+            const res = await fetch(
+              `https://neverland-api.vercel.app/movies/flixhq/watch?episodeId=${episodeId}&mediaId=${mediaId}&server=${server}`,
+            );
+            const data = await res.json();
+            const sourceUrl =
+              data.sources?.find((s) => s.quality === "auto")?.url ||
+              data.sources?.[0]?.url;
+            const referer = data.headers?.Referer || "";
+
+            if (!sourceUrl) throw new Error("No source found");
+
+            const proxyUrl = `/api/proxy?url=${encodeURIComponent(sourceUrl)}&referer=${encodeURIComponent(referer)}`;
+            const tracks =
+              data.subtitles?.map((sub) => ({
+                lang: sub.lang,
+                url: sub.url,
+              })) || [];
+
+            const currentTime = this.video.currentTime;
+            await this.loadVideo(proxyUrl, tracks);
+            this.video.currentTime = currentTime;
+          } catch (err) {
+            console.error(err);
+            alert("Failed to switch server");
+          }
+          this.hideLoading();
+        }
+
+        togglePlay() {
+          if (this.video.paused) {
+            this.video.play();
+          } else {
+            this.video.pause();
+          }
+        }
+
+        onPlay() {
+          this.playIcon.style.display = "none";
+          this.pauseIcon.style.display = "block";
+          this.hasStarted = true;
+          this.hidePoster();
+          this.startHideTimer();
+        }
+
+        onPause() {
+          this.playIcon.style.display = "block";
+          this.pauseIcon.style.display = "none";
+          this.showUI();
+          clearTimeout(this.hideTimeout);
+        }
+
+        showPoster() {
+          this.posterBg.classList.add("visible");
+        }
+
+        hidePoster() {
+          this.posterBg.classList.remove("visible");
+        }
+
+        updateProgress() {
+          const percent = (this.video.currentTime / this.video.duration) * 100;
+          this.progressBar.style.width = percent + "%";
+          this.timeDisplay.textContent = `${this.formatTime(this.video.currentTime)} / ${this.formatTime(this.video.duration)}`;
+        }
+
+        updateBuffer() {
+          if (this.video.buffered.length > 0) {
+            const buffered = this.video.buffered.end(
+              this.video.buffered.length - 1,
+            );
+            const percent = (buffered / this.video.duration) * 100;
+            this.progressBuffer.style.width = percent + "%";
+          }
+        }
+
+        seek(e) {
+          const rect = this.progressContainer.getBoundingClientRect();
+          const percent = (e.clientX - rect.left) / rect.width;
+          this.video.currentTime = percent * this.video.duration;
+        }
+
+        skip(seconds) {
+          this.video.currentTime += seconds;
+          this.showSkipIndicator(seconds);
+        }
+
+        showSkipIndicator(seconds) {
+          const indicator =
+            seconds < 0 ? this.rewindIndicator : this.forwardIndicator;
+          this.centerControls.classList.add("show");
+          setTimeout(() => {
+            this.centerControls.classList.remove("show");
+          }, 500);
+        }
+
+        toggleMute() {
+          this.video.muted = !this.video.muted;
+          if (this.video.muted) {
+            this.volumeIcon.style.display = "none";
+            this.muteIcon.style.display = "block";
+            this.volumeSlider.value = 0;
+          } else {
+            this.volumeIcon.style.display = "block";
+            this.muteIcon.style.display = "none";
+            this.volumeSlider.value = this.video.volume * 100;
+          }
+        }
+
+        setVolume(value) {
+          this.video.volume = value;
+          this.video.muted = value === 0;
+          if (this.video.muted) {
+            this.volumeIcon.style.display = "none";
+            this.muteIcon.style.display = "block";
+          } else {
+            this.volumeIcon.style.display = "block";
+            this.muteIcon.style.display = "none";
+          }
+        }
+
+        toggleFullscreen() {
+          if (!document.fullscreenElement) {
+            this.container.requestFullscreen();
+          } else {
+            document.exitFullscreen();
+          }
+        }
+
+        updateFullscreenButton() {
+          if (document.fullscreenElement) {
+            this.fullscreenIcon.style.display = "none";
+            this.exitFullscreenIcon.style.display = "block";
+          } else {
+            this.fullscreenIcon.style.display = "block";
+            this.exitFullscreenIcon.style.display = "none";
+          }
+        }
+
+        buildSettingsMenu() {
+          const speeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+          this.settingsMenu.innerHTML = speeds
+            .map(
+              (speed) =>
+                `<div class="menu-item ${speed === 1 ? "active" : ""}" data-speed="${speed}">
+                ${speed}x
+                ${speed === 1 ? "✓" : ""}
+              </div>`,
+            )
+            .join("");
+
+          this.settingsMenu.querySelectorAll(".menu-item").forEach((item) => {
+            item.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const speed = parseFloat(item.dataset.speed);
+              this.video.playbackRate = speed;
+              this.settingsMenu
+                .querySelectorAll(".menu-item")
+                .forEach((i) => i.classList.remove("active"));
+              item.classList.add("active");
+            });
+          });
+        }
+
+        buildCaptionsMenu() {
+          const tracks = Array.from(this.video.textTracks);
+          const activeTrack = tracks.findIndex((t) => t.mode === "showing");
+
+          this.captionsMenu.innerHTML =
+            `<div class="menu-item ${activeTrack === -1 ? "active" : ""}" data-track="off">Off ${activeTrack === -1 ? "✓" : ""}</div>` +
+            tracks
+              .map(
+                (track, index) =>
+                  `<div class="menu-item ${activeTrack === index ? "active" : ""}" data-track="${index}">${track.label} ${activeTrack === index ? "✓" : ""}</div>`,
+              )
+              .join("");
+
+          this.captionsMenu.querySelectorAll(".menu-item").forEach((item) => {
+            item.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const trackIndex = item.dataset.track;
+
+              tracks.forEach((track) => (track.mode = "disabled"));
+
+              if (trackIndex !== "off") {
+                tracks[parseInt(trackIndex)].mode = "showing";
+              }
+
+              this.captionsMenu
+                .querySelectorAll(".menu-item")
+                .forEach((i) => i.classList.remove("active"));
+              item.classList.add("active");
+
+              // Rebuild menu to update checkmarks
+              setTimeout(() => this.buildCaptionsMenu(), 100);
+            });
+          });
+        }
+
+        toggleMenu(menu) {
+          menu.classList.toggle("active");
+        }
+
+        showUI() {
+          this.playerUI.classList.add("visible");
+          this.startHideTimer();
+        }
+
+        hideUI() {
+          if (!this.video.paused) {
+            this.playerUI.classList.remove("visible");
+          }
+        }
+
+        startHideTimer() {
+          clearTimeout(this.hideTimeout);
+          if (!this.video.paused) {
+            this.hideTimeout = setTimeout(() => this.hideUI(), 3000);
+          }
+        }
+
+        showLoading() {
+          this.loading.classList.add("active");
+        }
+
+        hideLoading() {
+          this.loading.classList.remove("active");
+        }
+
+        handleKeyboard(e) {
+          switch (e.key) {
+            case " ":
+            case "k":
+              e.preventDefault();
+              this.togglePlay();
+              break;
+            case "ArrowLeft":
+              e.preventDefault();
+              this.skip(-10);
+              break;
+            case "ArrowRight":
+              e.preventDefault();
+              this.skip(10);
+              break;
+            case "ArrowUp":
+              e.preventDefault();
+              this.setVolume(Math.min(1, this.video.volume + 0.1));
+              this.volumeSlider.value = this.video.volume * 100;
+              break;
+            case "ArrowDown":
+              e.preventDefault();
+              this.setVolume(Math.max(0, this.video.volume - 0.1));
+              this.volumeSlider.value = this.video.volume * 100;
+              break;
+            case "m":
+              e.preventDefault();
+              this.toggleMute();
+              break;
+            case "f":
+              e.preventDefault();
+              this.toggleFullscreen();
+              break;
+          }
+        }
+
+        formatTime(seconds) {
+          if (isNaN(seconds)) return "0:00";
+          const h = Math.floor(seconds / 3600);
+          const m = Math.floor((seconds % 3600) / 60);
+          const s = Math.floor(seconds % 60);
+          if (h > 0) {
+            return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+          }
+          return `${m}:${s.toString().padStart(2, "0")}`;
+        }
+      }
+
+      // Initialize player after HLS.js loads
+      function initPlayer() {
+        if (typeof Hls !== "undefined") {
+          new VideoPlayer();
+        } else {
+          setTimeout(initPlayer, 100);
+        }
+      }
+
+      initPlayer();
+    </script>
+  </body>
+</html>
