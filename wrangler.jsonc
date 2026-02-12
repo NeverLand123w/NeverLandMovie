@@ -1,6 +1,6 @@
 {
 	"main": "dist/_worker.js/index.js",
-	"name": "movie-website",
+	"name": "neverland-movie",
   "compatibility_date": "2026-02-11",
   "compatibility_flags": [
     "nodejs_compat",
